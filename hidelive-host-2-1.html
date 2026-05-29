@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>HIDE.LIVE — Ospitante</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07080a;--surface:#0f1114;--surface2:#161820;--border:#22262f;
+  --accent:#c8ff00;--accent-dim:rgba(200,255,0,0.12);--red:#ff4455;
+  --text:#e8eaf0;--muted:#52596b;
+  --mono:'DM Mono',monospace;--display:'Syne',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);overflow-x:hidden;}
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:999;opacity:.4;}
+
+/* ─── PERMISSION OVERLAY ─── */
+#perm-overlay{
+  position:fixed;inset:0;background:rgba(7,8,10,0.98);z-index:900;
+  display:flex;align-items:center;justify-content:center;
+  padding:24px;flex-direction:column;
+  backdrop-filter:blur(8px);
+}
+.perm-logo{font-family:var(--display);font-weight:800;font-size:clamp(2rem,8vw,3.2rem);letter-spacing:-.02em;margin-bottom:6px;}
+.perm-logo .dot{color:var(--accent);}
+.perm-tagline{font-size:.6rem;letter-spacing:.25em;color:var(--muted);text-transform:uppercase;margin-bottom:40px;}
+.perm-title{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--text);margin-bottom:6px;text-align:center;}
+.perm-sub{font-size:.6rem;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;text-align:center;margin-bottom:28px;line-height:1.7;}
+.perm-list{display:flex;flex-direction:column;gap:10px;width:100%;max-width:360px;margin-bottom:28px;}
+.perm-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--border);background:var(--surface);}
+.perm-icon{font-size:1.3rem;flex-shrink:0;width:28px;text-align:center;}
+.perm-info{display:flex;flex-direction:column;gap:2px;flex:1;}
+.perm-name{font-family:var(--display);font-size:.75rem;font-weight:700;color:var(--text);}
+.perm-desc{font-size:.56rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+.perm-badge{font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border:1px solid;flex-shrink:0;}
+.perm-badge.wait{color:var(--muted);border-color:var(--border);}
+.perm-badge.ok{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+.perm-badge.denied{color:var(--red);border-color:var(--red);background:rgba(255,68,85,.08);}
+.perm-btn{width:100%;max-width:360px;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;padding:16px;border:1px solid var(--accent);background:var(--accent);color:#000;cursor:pointer;transition:all .15s;font-weight:500;-webkit-tap-highlight-color:transparent;}
+.perm-btn:active{background:rgba(200,255,0,.8);}
+.perm-btn:disabled{opacity:.35;cursor:not-allowed;}
+.perm-note{font-size:.54rem;letter-spacing:.08em;color:var(--muted);text-align:center;line-height:1.6;max-width:320px;margin-top:16px;text-transform:uppercase;}
+
+/* ─── ACCESSO NEGATO ─── */
+#denied{display:none;min-height:100vh;align-items:center;justify-content:center;padding:32px 24px;flex-direction:column;gap:18px;text-align:center;}
+#denied.active{display:flex;}
+.denied-logo{font-family:var(--display);font-weight:800;font-size:1.8rem;}
+.denied-logo .dot{color:var(--accent);}
+.denied-icon{font-size:3rem;}
+.denied-title{font-family:var(--display);font-weight:800;font-size:1.4rem;color:var(--red);}
+.denied-sub{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);line-height:1.8;}
+
+/* ─── HOST SCREEN ─── */
+#host{display:none;min-height:100vh;flex-direction:column;}
+#host.active{display:flex;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);}
+.top-logo{font-family:var(--display);font-weight:800;font-size:1.1rem;}
+.top-logo .dot{color:var(--accent);}
+.status-pill{display:flex;align-items:center;gap:6px;font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.led{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s,box-shadow .3s;}
+.led.wait{background:#ffaa00;box-shadow:0 0 8px #ffaa00;animation:blink 1.2s infinite;}
+.led.live{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1s infinite;}
+.led.conn{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.host-body{flex:1;display:flex;flex-direction:column;padding:20px;gap:16px;}
+.preview-wrap{flex:1;position:relative;background:#000;border:1px solid var(--border);overflow:hidden;min-height:220px;}
+.preview-wrap video{width:100%;height:100%;object-fit:cover;display:block;}
+.preview-label{position:absolute;top:10px;left:10px;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);background:rgba(0,0,0,.7);padding:4px 8px;border:1px solid rgba(200,255,0,.3);}
+.host-controls{display:flex;gap:8px;}
+.ctrl-btn{font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;padding:10px 16px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;flex:1;transition:all .15s;-webkit-tap-highlight-color:transparent;}
+.ctrl-btn:active{border-color:var(--accent);color:var(--accent);}
+.ctrl-btn.danger{border-color:var(--red);color:var(--red);}
+.ctrl-btn:disabled{opacity:.3;cursor:not-allowed;}
+.info-row{display:flex;gap:16px;flex-wrap:wrap;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;}
+.info-row b{color:var(--text);font-weight:400;}
+.err{font-size:.65rem;color:var(--red);letter-spacing:.06em;display:none;padding:8px 12px;border:1px solid rgba(255,68,85,.3);background:rgba(255,68,85,.06);}
+.corner{position:absolute;width:16px;height:16px;border-color:var(--accent);border-style:solid;}
+.corner.tl{top:8px;left:8px;border-width:2px 0 0 2px;}
+.corner.br{bottom:8px;right:8px;border-width:0 2px 2px 0;}
+</style>
+</head>
+<body>
+
+<!-- ════ PERMISSION OVERLAY ════ -->
+<div id="perm-overlay">
+  <div class="perm-logo">HIDE<span class="dot">.</span>LIVE</div>
+  <div class="perm-tagline">Modalità ospitante</div>
+  <div class="perm-title">Autorizzazioni richieste</div>
+  <div class="perm-sub">Per trasmettere la fotocamera<br>sono necessari i seguenti accessi</div>
+  <div class="perm-list">
+    <div class="perm-item">
+      <div class="perm-icon">📍</div>
+      <div class="perm-info">
+        <div class="perm-name">Posizione</div>
+        <div class="perm-desc">Rilevamento area geografica</div>
+      </div>
+      <div class="perm-badge wait" id="badge-location">RICHIESTA</div>
+    </div>
+    <div class="perm-item">
+      <div class="perm-icon">🔔</div>
+      <div class="perm-info">
+        <div class="perm-name">Notifiche</div>
+        <div class="perm-desc">Avvisi di connessione e stato</div>
+      </div>
+      <div class="perm-badge wait" id="badge-notif">RICHIESTA</div>
+    </div>
+    <div class="perm-item">
+      <div class="perm-icon">🎙</div>
+      <div class="perm-info">
+        <div class="perm-name">Microfono</div>
+        <div class="perm-desc">Canale audio sessione</div>
+      </div>
+      <div class="perm-badge wait" id="badge-mic">RICHIESTA</div>
+    </div>
+    <div class="perm-item">
+      <div class="perm-icon">📷</div>
+      <div class="perm-info">
+        <div class="perm-name">Fotocamera</div>
+        <div class="perm-desc">Trasmissione video live</div>
+      </div>
+      <div class="perm-badge wait" id="badge-cam">RICHIESTA</div>
+    </div>
+  </div>
+  <button class="perm-btn" id="perm-start-btn">CONCEDI AUTORIZZAZIONI</button>
+  <div class="perm-note">Le autorizzazioni vengono usate esclusivamente durante la sessione attiva.<br>Nessun dato viene registrato o trasmesso a terzi.</div>
+</div>
+
+<!-- ════ ACCESSO NEGATO ════ -->
+<div id="denied">
+  <div class="denied-logo">HIDE<span class="dot">.</span>LIVE</div>
+  <div class="denied-icon">🔒</div>
+  <div class="denied-title">LINK NON VALIDO</div>
+  <div class="denied-sub">Questo link non è valido o è scaduto.<br><br>Richiedi un nuovo link all'ospite.</div>
+</div>
+
+<!-- ════ HOST SCREEN ════ -->
+<div id="host">
+  <div class="topbar">
+    <div class="top-logo">HIDE<span class="dot">.</span>LIVE</div>
+    <div class="status-pill"><span class="led" id="host-led"></span><span id="host-status">Connessione...</span></div>
+  </div>
+  <div class="host-body">
+    <div class="preview-wrap">
+      <video id="host-preview" autoplay playsinline muted></video>
+      <div class="preview-label">📡 LIVE</div>
+      <div class="corner tl"></div>
+      <div class="corner br"></div>
+    </div>
+    <div class="host-controls">
+      <button class="ctrl-btn" id="host-btn-flip">⇄ INVERTI CAM</button>
+      <button class="ctrl-btn danger" id="host-btn-stop">■ STOP</button>
+    </div>
+    <div class="info-row">
+      <span>STATO: <b id="host-info-state">—</b></span>
+      <span>RISOLUZIONE: <b id="host-info-res">—</b></span>
+    </div>
+    <div class="err" id="host-err"></div>
+  </div>
+</div>
+
+<script>
+function setBadge(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'perm-badge ' + state;
+  el.textContent = state === 'ok' ? '✓ OK' : state === 'denied' ? '✗ NEGATO' : 'RICHIESTA';
+}
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+function setLed(id, state) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'led ' + (state || '');
+}
+function setStatus(statusId, ledId, text, ledState) {
+  const el = document.getElementById(statusId);
+  if (el) el.textContent = text;
+  setLed(ledId, ledState || '');
+}
+
+// ─── Leggi guest peer ID dall'URL ───
+function getGuestPeerId() {
+  const hash = window.location.hash.slice(1);
+  const params = {};
+  hash.split('&').forEach(p => {
+    const [k, v] = p.split('=');
+    if (k && v) params[k] = decodeURIComponent(v);
+  });
+  return params.guest || null;
+}
+
+const guestPeerId = getGuestPeerId();
+
+// ─── PERMESSI ───
+document.getElementById('perm-start-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('perm-start-btn');
+  btn.disabled = true;
+  btn.textContent = 'AUTORIZZAZIONE IN CORSO...';
+
+  // Posizione
+  await new Promise(resolve => {
+    if (!navigator.geolocation) { setBadge('badge-location', 'denied'); resolve(); return; }
+    navigator.geolocation.getCurrentPosition(
+      () => { setBadge('badge-location', 'ok'); resolve(); },
+      () => { setBadge('badge-location', 'denied'); resolve(); },
+      { timeout: 6000 }
+    );
+  });
+
+  // Notifiche
+  await new Promise(resolve => {
+    if (!('Notification' in window)) { setBadge('badge-notif', 'denied'); resolve(); return; }
+    Notification.requestPermission().then(r => {
+      setBadge('badge-notif', r === 'granted' ? 'ok' : 'denied');
+      resolve();
+    }).catch(() => { setBadge('badge-notif', 'denied'); resolve(); });
+  });
+
+  // Microfono
+  await new Promise(resolve => {
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(stream => { stream.getTracks().forEach(t => t.stop()); setBadge('badge-mic', 'ok'); resolve(); })
+      .catch(() => { setBadge('badge-mic', 'denied'); resolve(); });
+  });
+
+  // Fotocamera — la teniamo per usarla subito
+  let camStream = null;
+  await new Promise(resolve => {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      .then(stream => { camStream = stream; setBadge('badge-cam', 'ok'); resolve(); })
+      .catch(() => { setBadge('badge-cam', 'denied'); resolve(); });
+  });
+
+  await new Promise(r => setTimeout(r, 900));
+  document.getElementById('perm-overlay').style.display = 'none';
+  initHost(camStream);
+});
+
+// ─── HOST LOGIC ───
+let hostPeer = null, hostCall = null, localStream = null;
+let facingMode = 'environment';
+
+function initHost(camStream) {
+  if (!guestPeerId) {
+    document.getElementById('denied').classList.add('active');
+    return;
+  }
+
+  document.getElementById('host').classList.add('active');
+  localStream = camStream;
+
+  // Mostra preview locale
+  const preview = document.getElementById('host-preview');
+  if (localStream) {
+    preview.srcObject = localStream;
+    const track = localStream.getVideoTracks()[0];
+    if (track) {
+      const settings = track.getSettings();
+      document.getElementById('host-info-res').textContent = `${settings.width || '—'}×${settings.height || '—'}`;
+    }
+  }
+
+  setStatus('host-status', 'host-led', 'Connessione...', 'wait');
+
+  hostPeer = new Peer(undefined, { debug: 0 });
+
+  hostPeer.on('open', () => {
+    setStatus('host-status', 'host-led', 'Chiamata ospite...', 'wait');
+    document.getElementById('host-info-state').textContent = 'Connessione';
+
+    if (!localStream) {
+      showErr('host-err', 'Fotocamera non disponibile');
+      return;
+    }
+
+    hostCall = hostPeer.call(guestPeerId, localStream);
+
+    hostCall.on('stream', () => {
+      setStatus('host-status', 'host-led', 'LIVE', 'live');
+      document.getElementById('host-info-state').textContent = 'Live';
+      document.getElementById('host-btn-stop').disabled = false;
+    });
+
+    hostCall.on('close', () => onHostStop());
+    hostCall.on('error', () => { showErr('host-err', 'Connessione persa'); onHostStop(); });
+  });
+
+  hostPeer.on('error', err => {
+    showErr('host-err', 'Errore: ' + err.type);
+    setStatus('host-status', 'host-led', 'Errore', '');
+  });
+
+  document.getElementById('host-btn-stop').disabled = false;
+}
+
+document.getElementById('host-btn-flip').addEventListener('click', async () => {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
+    document.getElementById('host-preview').srcObject = localStream;
+    if (hostCall && hostCall.peerConnection) {
+      const sender = hostCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
+    }
+  } catch(e) { showErr('host-err', 'Impossibile cambiare fotocamera'); }
+});
+
+document.getElementById('host-btn-stop').addEventListener('click', () => {
+  if (hostCall) hostCall.close();
+  onHostStop();
+});
+
+function onHostStop() {
+  if (localStream) localStream.getTracks().forEach(t => t.stop());
+  setStatus('host-status', 'host-led', 'Disconnesso', '');
+  document.getElementById('host-info-state').textContent = '—';
+  document.getElementById('host-btn-stop').disabled = true;
+}
+</script>
+</body>
+</html>
